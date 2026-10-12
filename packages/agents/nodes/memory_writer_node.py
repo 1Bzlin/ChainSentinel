@@ -7,7 +7,11 @@ import uuid
 from packages.agents.citation_manager import extract_all_citations
 from packages.agents.state import AgentState
 from packages.memory.memory_retriever import resolve_supplier_id_from_code
-from packages.memory.memory_writer import extract_entities, write_long_term_from_turn, write_session_turn
+from packages.memory.memory_writer import (
+    extract_entities,
+    write_long_term_from_turn,
+    write_session_turn,
+)
 from packages.observability.repositories.memory_event_repo import write_memory_event
 
 
@@ -21,15 +25,15 @@ async def memory_writer_node(state: AgentState) -> AgentState:
     user_context = state["user_context"]
     session = state["db_session"]
     session_id = state.get("session_id") or state["trace_id"]
-    query = state["query"]
+    query = state.get("original_query") or state["query"]
     answer = state.get("final_answer") or state.get("draft_answer") or ""
 
     citations = extract_all_citations(answer)
-    evidence_refs = [
-        f"doc:{doc_id}#{chunk}" for doc_id, chunk in citations["doc"]
-    ] + [f"graph:{qt}#{pi}" for qt, pi in citations["graph"]] + [
-        f"memory:{mid}" for mid in citations["memory"]
-    ]
+    evidence_refs = (
+        [f"doc:{doc_id}#{chunk}" for doc_id, chunk in citations["doc"]]
+        + [f"graph:{qt}#{pi}" for qt, pi in citations["graph"]]
+        + [f"memory:{mid}" for mid in citations["memory"]]
+    )
 
     await write_session_turn(
         user_context,
@@ -39,7 +43,11 @@ async def memory_writer_node(state: AgentState) -> AgentState:
         evidence_refs=evidence_refs,
     )
 
-    entities = state.get("recent_entities") or extract_entities(f"{query} {answer}")
+    entities = (
+        state.get("resolved_entities")
+        or state.get("recent_entities")
+        or extract_entities(f"{state['query']} {answer}")
+    )
     supplier_code = entities.get("supplier")
     supplier_id = await resolve_supplier_id_from_code(
         session, user_context.tenant_id, supplier_code
@@ -82,7 +90,9 @@ async def memory_writer_node(state: AgentState) -> AgentState:
             event_type="write",
             memory_type=str(item.get("memory_type") or "long_term"),
             summary=str(item.get("summary") or item.get("content") or "")[:200],
-            memory_id=uuid.UUID(str(item["memory_id"])) if item.get("memory_id") else None,
+            memory_id=(
+                uuid.UUID(str(item["memory_id"])) if item.get("memory_id") else None
+            ),
             agent_run_id=agent_run_uuid,
         )
 

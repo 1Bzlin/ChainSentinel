@@ -28,4 +28,9 @@ class ChatResponse(BaseModel):
     nodes_executed: list[str]
     token_usage: dict
     status: str
-    route_mode: str | None = None
+    plan_id: str | None = None
+    plan_status: str | None = None
+    planning_source: str | None = None
+    planning_confidence: float | None = None
+    plan_summary: list[dict] = Field(default_factory=list)
+    resolved_query: str | None = None

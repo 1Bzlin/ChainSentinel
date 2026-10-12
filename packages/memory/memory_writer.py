@@ -22,10 +22,10 @@ from packages.memory.short_term import append_message, now_iso
 
 def extract_entities(text: str) -> dict[str, str]:
     entities: dict[str, str] = {}
-    supplier = re.search(r"\b(SUP-\d{3})\b", text, re.IGNORECASE)
+    supplier = re.search(r"(?<![A-Z0-9])(SUP-\d{3})(?![A-Z0-9])", text, re.IGNORECASE)
     if supplier:
         entities["supplier"] = supplier.group(1).upper()
-    product = re.search(r"\b(P\d{3})\b", text, re.IGNORECASE)
+    product = re.search(r"(?<![A-Z0-9])(P\d{3})(?![A-Z0-9])", text, re.IGNORECASE)
     if product:
         entities["product"] = product.group(1).upper()
     return entities
@@ -72,7 +72,9 @@ async def write_session_turn(
         str(user_context.tenant_id),
         str(user_context.user_id),
         session_id,
-        SessionMessage(role="user", content=query, timestamp=now_iso(), entities=entities),
+        SessionMessage(
+            role="user", content=query, timestamp=now_iso(), entities=entities
+        ),
     )
     await append_message(
         str(user_context.tenant_id),

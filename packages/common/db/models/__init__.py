@@ -1,6 +1,10 @@
 """SQLAlchemy ORM models."""
 
 from packages.common.db.models.agent_node_span import AgentNodeSpan
+from packages.common.db.models.agent_execution_plan import (
+    AgentExecutionPlan,
+    AgentTaskRun,
+)
 from packages.common.db.models.agent_run import AgentRun
 from packages.common.db.models.audit_log import AuditLog
 from packages.common.db.models.benchmark import BenchmarkResult, BenchmarkRun
@@ -20,6 +24,8 @@ from packages.common.db.models.user import User
 
 __all__ = [
     "AgentNodeSpan",
+    "AgentExecutionPlan",
+    "AgentTaskRun",
     "AgentRun",
     "AuditLog",
     "BenchmarkResult",

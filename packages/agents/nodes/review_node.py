@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from packages.agents.answer_reviewer import review_answer
 from packages.agents.state import AgentState
-from packages.rag.prompts import NO_EVIDENCE_ANSWER, NO_PERMISSION_ANSWER
+from packages.rag.prompts import NO_EVIDENCE_ANSWER
 
 
 async def review_node(state: AgentState) -> AgentState:

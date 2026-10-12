@@ -45,16 +45,20 @@ async def retrieve_memory_evidence(
     tenant_id = str(user_context.tenant_id)
     user_id = str(user_context.user_id)
 
-    session_messages = await get_recent_messages(tenant_id, user_id, session_id, limit=limit)
+    session_messages = await get_recent_messages(
+        tenant_id, user_id, session_id, limit=limit
+    )
     recent_entities = await get_recent_entities(tenant_id, user_id, session_id)
 
     supplier_code = recent_entities.get("supplier")
     if not supplier_code:
-        match = re.search(r"\b(SUP-\d{3})\b", query, re.IGNORECASE)
+        match = re.search(r"(?<![A-Z0-9])(SUP-\d{3})(?![A-Z0-9])", query, re.IGNORECASE)
         if match:
             supplier_code = match.group(1).upper()
 
-    supplier_uuid = await resolve_supplier_id_from_code(session, user_context.tenant_id, supplier_code)
+    supplier_uuid = await resolve_supplier_id_from_code(
+        session, user_context.tenant_id, supplier_code
+    )
     if user_context.is_external_supplier and user_context.supplier_id:
         supplier_uuid = user_context.supplier_id
 
@@ -80,7 +84,11 @@ async def retrieve_memory_evidence(
                 "confidence": 0.6,
                 "permission_scope": "session",
                 "citation": None,
-                "metadata": {"role": message.role, "entities": message.entities, "ephemeral": True},
+                "metadata": {
+                    "role": message.role,
+                    "entities": message.entities,
+                    "ephemeral": True,
+                },
             }
         )
 
@@ -101,7 +109,10 @@ async def retrieve_memory_evidence(
                 "confidence": record.confidence,
                 "permission_scope": MemoryScope.BUSINESS,
                 "citation": f"[memory:{record.id}]",
-                "metadata": {"memory_type": record.memory_type, "scope": MemoryScope.BUSINESS},
+                "metadata": {
+                    "memory_type": record.memory_type,
+                    "scope": MemoryScope.BUSINESS,
+                },
             }
         )
 
@@ -117,7 +128,10 @@ async def retrieve_memory_evidence(
                 "confidence": record.confidence,
                 "permission_scope": MemoryScope.USER,
                 "citation": f"[memory:{record.id}]",
-                "metadata": {"memory_type": record.memory_type, "scope": MemoryScope.USER},
+                "metadata": {
+                    "memory_type": record.memory_type,
+                    "scope": MemoryScope.USER,
+                },
             }
         )
 

@@ -57,7 +57,9 @@ def evidence_from_graph_paths(paths: list[GraphPath]) -> list[EvidenceItem]:
     return items
 
 
-def evidence_from_memory_items(memory_evidence: list[dict[str, Any]]) -> list[EvidenceItem]:
+def evidence_from_memory_items(
+    memory_evidence: list[dict[str, Any]],
+) -> list[EvidenceItem]:
     return [EvidenceItem.from_dict(item) for item in memory_evidence]
 
 
@@ -67,6 +69,7 @@ def evidence_from_tool_items(tool_evidence: list[dict[str, Any]]) -> list[Eviden
 
 def aggregate_evidence(
     *,
+    evidence_items: list[EvidenceItem] | None = None,
     rag_chunks: list[RetrievedChunk] | None = None,
     graph_paths: list[GraphPath] | None = None,
     memory_evidence: list[dict[str, Any]] | None = None,
@@ -80,7 +83,7 @@ def aggregate_evidence(
 
     combined: list[EvidenceItem] = []
     seen: set[str] = set()
-    for bucket in (tool_items, rag_items, graph_items, memory_items):
+    for bucket in (evidence_items or [], tool_items, rag_items, graph_items, memory_items):
         for item in bucket:
             key = _dedupe_key(item)
             if key in seen:
@@ -97,17 +100,12 @@ def aggregate_evidence(
         )
     )
 
-    # Session turns are context hints only — keep for entity resolution, drop from prompt budget.
-    combined = [
-        item
-        for item in combined
-        if not (item.evidence_type == "memory" and item.metadata.get("ephemeral"))
-    ]
-
     for item in combined:
         item.content = compress_evidence_content(item.content)
 
-    selected, budget_meta = apply_context_budget(combined, max_context_tokens=max_context_tokens)
+    selected, budget_meta = apply_context_budget(
+        combined, max_context_tokens=max_context_tokens
+    )
     summary = {
         "total_evidence": len(combined),
         "selected_evidence": len(selected),

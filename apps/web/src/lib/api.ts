@@ -86,6 +86,7 @@ export interface GraphRAGResponse {
   cypher_template: string;
   trace_id: string;
   latency_ms: number;
+  result_count: number;
   permission_decision: string;
 }
 
@@ -118,7 +119,25 @@ export interface ChatResponse {
   nodes_executed: string[];
   token_usage: Record<string, unknown>;
   status: string;
-  route_mode: string | null;
+  plan_id: string | null;
+  plan_status: string | null;
+  planning_source: string | null;
+  planning_confidence: number | null;
+  plan_summary: Array<{
+    task_id: string;
+    task_type: string;
+    query: string;
+    status: string;
+    depends_on: string[];
+    required: boolean;
+    graph_query_type?: string;
+    entity_code?: string;
+    tool_name?: string;
+    doc_type?: string | null;
+    supplier_code?: string | null;
+    error?: string;
+  }>;
+  resolved_query: string | null;
   memory_used: Record<string, unknown>[];
   memory_written: Record<string, unknown>[];
   context_budget: { max_tokens: number; used_tokens: number } | null;
@@ -128,6 +147,8 @@ export interface TraceDetail {
   trace_id: string;
   request: Record<string, unknown>;
   agent_run: Record<string, unknown> | null;
+  execution_plans: Record<string, unknown>[];
+  task_runs: Record<string, unknown>[];
   retrieval_logs: Record<string, unknown>[];
   graph_retrieval_logs: Record<string, unknown>[];
   audit_logs: Record<string, unknown>[];

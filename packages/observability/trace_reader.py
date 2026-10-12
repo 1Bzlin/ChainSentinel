@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.authz.rbac import UserContext
 from packages.common.db.models.agent_node_span import AgentNodeSpan
+from packages.common.db.models.agent_execution_plan import (
+    AgentExecutionPlan,
+    AgentTaskRun,
+)
 from packages.common.db.models.agent_run import AgentRun
 from packages.common.db.models.audit_log import AuditLog
 from packages.common.db.models.benchmark import BenchmarkResult, BenchmarkRun
@@ -56,13 +60,23 @@ def _redact_for_external_supplier(payload: dict[str, Any]) -> dict[str, Any]:
         row["results"] = [
             item
             for item in row.get("results") or []
-            if not any(marker in str(item.get("title", "")) for marker in FORBIDDEN_TITLE_MARKERS)
+            if not any(
+                marker in str(item.get("title", ""))
+                for marker in FORBIDDEN_TITLE_MARKERS
+            )
         ]
     answer = payload.get("agent_run", {}).get("final_answer")
     if isinstance(answer, str):
-        for marker in ("Net 60", "Volume discount tier 1", "Beta Materials", "18% margin"):
+        for marker in (
+            "Net 60",
+            "Volume discount tier 1",
+            "Beta Materials",
+            "18% margin",
+        ):
             if marker.lower() in answer.lower():
-                payload["agent_run"]["final_answer"] = "[redacted: potential unauthorized content]"
+                payload["agent_run"][
+                    "final_answer"
+                ] = "[redacted: potential unauthorized content]"
                 break
     return payload
 
@@ -73,50 +87,156 @@ async def load_trace(
     user_context: UserContext,
 ) -> dict[str, Any]:
     agent_run = (
-        await session.execute(select(AgentRun).where(AgentRun.trace_id == trace_id))
+        await session.execute(
+            select(AgentRun).where(
+                AgentRun.trace_id == trace_id,
+                AgentRun.tenant_id == user_context.tenant_id,
+            )
+        )
     ).scalar_one_or_none()
 
     owner_user_id: uuid.UUID | None = agent_run.user_id if agent_run else None
 
     trace_request = (
-        await session.execute(select(TraceRequest).where(TraceRequest.trace_id == trace_id).limit(1))
+        await session.execute(
+            select(TraceRequest)
+            .where(
+                TraceRequest.trace_id == trace_id,
+                TraceRequest.tenant_id == user_context.tenant_id,
+            )
+            .limit(1)
+        )
     ).scalar_one_or_none()
 
+    execution_plans = []
+    task_runs = []
+    if agent_run:
+        execution_plans = list(
+            (
+                await session.execute(
+                    select(AgentExecutionPlan).where(
+                        AgentExecutionPlan.agent_run_id == agent_run.id,
+                        AgentExecutionPlan.tenant_id == user_context.tenant_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        task_runs = list(
+            (
+                await session.execute(
+                    select(AgentTaskRun)
+                    .where(
+                        AgentTaskRun.agent_run_id == agent_run.id,
+                        AgentTaskRun.tenant_id == user_context.tenant_id,
+                    )
+                    .order_by(AgentTaskRun.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
     retrieval_logs = list(
-        (await session.execute(select(RetrievalLog).where(RetrievalLog.trace_id == trace_id))).scalars().all()
+        (
+            await session.execute(
+                select(RetrievalLog).where(
+                    RetrievalLog.trace_id == trace_id,
+                    RetrievalLog.tenant_id == user_context.tenant_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     graph_logs = list(
         (
             await session.execute(
-                select(GraphRetrievalLog).where(GraphRetrievalLog.trace_id == trace_id)
+                select(GraphRetrievalLog).where(
+                    GraphRetrievalLog.trace_id == trace_id,
+                    GraphRetrievalLog.tenant_id == user_context.tenant_id,
+                )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     audit_logs = list(
-        (await session.execute(select(AuditLog).where(AuditLog.trace_id == trace_id))).scalars().all()
+        (
+            await session.execute(
+                select(AuditLog).where(
+                    AuditLog.trace_id == trace_id,
+                    AuditLog.tenant_id == user_context.tenant_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     memory_events = list(
-        (await session.execute(select(MemoryEventLog).where(MemoryEventLog.trace_id == trace_id))).scalars().all()
+        (
+            await session.execute(
+                select(MemoryEventLog).where(
+                    MemoryEventLog.trace_id == trace_id,
+                    MemoryEventLog.tenant_id == user_context.tenant_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     tool_calls = list(
-        (await session.execute(select(ToolCallLog).where(ToolCallLog.trace_id == trace_id))).scalars().all()
+        (
+            await session.execute(
+                select(ToolCallLog).where(
+                    ToolCallLog.trace_id == trace_id,
+                    ToolCallLog.tenant_id == user_context.tenant_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     benchmark_results = list(
         (
-            await session.execute(select(BenchmarkResult).where(BenchmarkResult.trace_id == trace_id))
-        ).scalars().all()
+            await session.execute(
+                select(BenchmarkResult)
+                .join(BenchmarkRun, BenchmarkRun.id == BenchmarkResult.benchmark_run_id)
+                .where(
+                    BenchmarkResult.trace_id == trace_id,
+                    BenchmarkRun.tenant_id == user_context.tenant_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     benchmark_runs = list(
-        (await session.execute(select(BenchmarkRun).where(BenchmarkRun.trace_id == trace_id))).scalars().all()
+        (
+            await session.execute(
+                select(BenchmarkRun).where(
+                    BenchmarkRun.trace_id == trace_id,
+                    BenchmarkRun.tenant_id == user_context.tenant_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
     node_spans = list(
         (
             await session.execute(
                 select(AgentNodeSpan)
-                .where(AgentNodeSpan.trace_id == trace_id)
+                .where(
+                    AgentNodeSpan.trace_id == trace_id,
+                    AgentNodeSpan.tenant_id == user_context.tenant_id,
+                )
                 .order_by(AgentNodeSpan.start_time.asc())
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     if not any(
@@ -132,7 +252,9 @@ async def load_trace(
             benchmark_runs,
         ]
     ):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="trace not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="trace not found"
+        )
 
     if owner_user_id is None:
         if retrieval_logs:
@@ -147,7 +269,9 @@ async def load_trace(
             owner_user_id = tool_calls[0].user_id
 
     if owner_user_id is None or not _can_access_trace(user_context, owner_user_id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="trace access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="trace access denied"
+        )
 
     timeline: list[dict[str, Any]] = []
     for span in node_spans:
@@ -178,7 +302,9 @@ async def load_trace(
                 "type": "graphrag",
                 "name": row.query_type,
                 "latency_ms": row.latency_ms,
-                "status": "denied" if row.permission_decision == "denied" else "completed",
+                "status": (
+                    "denied" if row.permission_decision == "denied" else "completed"
+                ),
             }
         )
     for row in memory_events:
@@ -199,6 +325,18 @@ async def load_trace(
                 "status": row.status,
             }
         )
+    for row in task_runs:
+        timeline.append(
+            {
+                "type": "plan_task",
+                "name": f"{row.task_type}:{row.task_id}",
+                "latency_ms": row.latency_ms,
+                "status": row.status,
+                "start_time": row.started_at.isoformat() if row.started_at else None,
+                "end_time": row.completed_at.isoformat() if row.completed_at else None,
+                "error_message": row.error_message,
+            }
+        )
     for row in audit_logs:
         timeline.append(
             {
@@ -212,8 +350,7 @@ async def load_trace(
     permission_denied_count = sum(
         1
         for row in audit_logs
-        if row.permission_decision == "denied"
-        or row.action.endswith("_denied")
+        if row.permission_decision == "denied" or row.action.endswith("_denied")
     ) + sum(1 for row in graph_logs if row.permission_decision == "denied")
 
     token_usage = agent_run.token_usage if agent_run else {}
@@ -234,6 +371,33 @@ async def load_trace(
             "status_code": trace_request.status_code if trace_request else None,
         },
         "agent_run": None,
+        "execution_plans": [
+            {
+                "plan_id": str(row.id),
+                "source": row.source,
+                "confidence": row.confidence,
+                "status": row.status,
+                "plan": row.validated_plan_json or row.plan_json,
+                "model_name": row.model_name,
+                "token_usage": row.token_usage,
+            }
+            for row in execution_plans
+        ],
+        "task_runs": [
+            {
+                "id": str(row.id),
+                "plan_id": str(row.plan_id),
+                "task_id": row.task_id,
+                "task_type": row.task_type,
+                "dependencies": row.dependencies,
+                "status": row.status,
+                "permission_decision": row.permission_decision,
+                "output_summary": row.output_summary,
+                "latency_ms": row.latency_ms,
+                "error_message": row.error_message,
+            }
+            for row in task_runs
+        ],
         "retrieval_logs": [
             {
                 "id": str(row.id),
@@ -336,6 +500,8 @@ async def load_trace(
         memory_events = payload.get("memory_events") or []
         for row in memory_events:
             if row.get("summary"):
-                row["summary"] = row["summary"][:120] + ("..." if len(row["summary"]) > 120 else "")
+                row["summary"] = row["summary"][:120] + (
+                    "..." if len(row["summary"]) > 120 else ""
+                )
 
     return payload

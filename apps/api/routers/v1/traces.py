@@ -26,6 +26,8 @@ async def get_trace(
         trace_id=payload["trace_id"],
         request=payload.get("request") or {},
         agent_run=payload.get("agent_run"),
+        execution_plans=payload.get("execution_plans") or [],
+        task_runs=payload.get("task_runs") or [],
         retrieval_logs=payload.get("retrieval_logs") or [],
         graph_retrieval_logs=payload.get("graph_retrieval_logs") or [],
         audit_logs=payload.get("audit_logs") or [],

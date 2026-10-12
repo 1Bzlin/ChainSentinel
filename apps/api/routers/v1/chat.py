@@ -62,5 +62,10 @@ async def chat(
         nodes_executed=result["nodes_executed"],
         token_usage=result["token_usage"],
         status=result["status"],
-        route_mode=result.get("route_mode"),
+        plan_id=result.get("plan_id"),
+        plan_status=result.get("plan_status"),
+        planning_source=result.get("planning_source"),
+        planning_confidence=result.get("planning_confidence"),
+        plan_summary=result.get("plan_summary") or [],
+        resolved_query=result.get("resolved_query"),
     )

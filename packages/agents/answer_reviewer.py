@@ -31,6 +31,11 @@ def review_answer(
 ) -> tuple[bool, list[str]]:
     errors: list[str] = []
 
+    if status == "clarification_required":
+        return bool(answer.strip()), (
+            [] if answer.strip() else ["clarification question is empty"]
+        )
+
     if status == "blocked":
         if answer != NO_PERMISSION_ANSWER and "无权" not in answer:
             errors.append("blocked query must use no-permission template")
@@ -80,13 +85,18 @@ def review_answer(
         if (query_type, path_index) not in allowed_graph:
             errors.append(f"graph citation not in evidence: {query_type}#{path_index}")
 
-    allowed_memory = {item.source_id for item in evidence if item.evidence_type == "memory"}
+    allowed_memory = {
+        item.source_id for item in evidence if item.evidence_type == "memory"
+    }
     for memory_id in citations["memory"]:
         if memory_id not in allowed_memory:
             errors.append(f"memory citation not in evidence: {memory_id}")
 
     allowed_tool = {
-        (item.metadata.get("tool_name", item.source_id), item.metadata.get("tool_call_id", item.evidence_id))
+        (
+            item.metadata.get("tool_name", item.source_id),
+            item.metadata.get("tool_call_id", item.evidence_id),
+        )
         for item in evidence
         if item.evidence_type == "tool_result"
     }

@@ -34,6 +34,8 @@ class TraceDetailResponse(BaseModel):
     trace_id: str
     request: dict[str, Any] = Field(default_factory=dict)
     agent_run: dict[str, Any] | None = None
+    execution_plans: list[dict[str, Any]] = Field(default_factory=list)
+    task_runs: list[dict[str, Any]] = Field(default_factory=list)
     retrieval_logs: list[dict[str, Any]] = Field(default_factory=list)
     graph_retrieval_logs: list[dict[str, Any]] = Field(default_factory=list)
     audit_logs: list[dict[str, Any]] = Field(default_factory=list)

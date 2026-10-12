@@ -6,7 +6,6 @@ from packages.agents.citation_manager import build_citation_footer
 from packages.agents.evidence_types import EvidenceItem
 from packages.agents.state import AgentState
 from packages.common.llm.factory import get_llm_client
-from packages.graphrag.answer_format import build_graph_answer
 from packages.rag.citations import Citation
 from packages.rag.prompts import (
     NO_EVIDENCE_ANSWER,
@@ -71,12 +70,11 @@ async def report_node(state: AgentState) -> AgentState:
         }
 
     query = state["query"]
-    route_mode = state.get("route_mode") or "rag"
     unified: list[EvidenceItem] = state.get("unified_evidence") or []
-    chunks = state.get("retrieved_chunks") or []
-    graph_result = state.get("graph_result")
+    task_results = state.get("task_results") or []
+    evidence_types = {item.evidence_type for item in unified}
 
-    if route_mode == "tool" and unified:
+    if evidence_types == {"tool_result"}:
         answer = _tool_primary_answer(query, unified)
         return {
             "draft_answer": answer,
@@ -87,15 +85,6 @@ async def report_node(state: AgentState) -> AgentState:
         }
 
     if not unified:
-        if graph_result and graph_result.graph_paths and route_mode == "graphrag":
-            answer = build_graph_answer(graph_result)
-            return {
-                "draft_answer": answer,
-                "citations": [],
-                "token_usage": {},
-                "status": "answered",
-                "nodes_executed": ["report"],
-            }
         return {
             "draft_answer": NO_EVIDENCE_ANSWER,
             "citations": [],
@@ -104,30 +93,8 @@ async def report_node(state: AgentState) -> AgentState:
             "nodes_executed": ["report"],
         }
 
-    memory_only = (
-        route_mode in {"memory", "memory_rag"}
-        and not any(item.evidence_type == "rag_chunk" for item in unified)
-        and not any(item.evidence_type == "graph_path" for item in unified)
-        and any(item.evidence_type == "memory" for item in unified)
-    )
-
-    if memory_only:
+    if evidence_types == {"memory"}:
         answer = _memory_primary_answer(query, unified)
-        return {
-            "draft_answer": answer,
-            "citations": [],
-            "token_usage": {},
-            "status": "answered",
-            "nodes_executed": ["report"],
-        }
-
-    if route_mode == "graphrag" and graph_result and not any(
-        item.evidence_type == "rag_chunk" for item in unified
-    ):
-        answer = build_graph_answer(graph_result)
-        footer = build_citation_footer([item for item in unified if item.evidence_type == "graph_path"])
-        if footer:
-            answer = f"{answer}\n\n{footer}"
         return {
             "draft_answer": answer,
             "citations": [],
@@ -138,10 +105,23 @@ async def report_node(state: AgentState) -> AgentState:
 
     llm = get_llm_client()
     evidence_block = _evidence_block(unified)
+    task_block = "\n".join(
+        f"- {result.task_id} ({result.task_type}): {result.status}"
+        + (f"; {result.error}" if result.error else "")
+        for result in task_results
+    )
+    user_prompt = build_rag_user_prompt(query, evidence_block)
+    if task_block:
+        user_prompt = (
+            f"执行计划状态：{state.get('plan_status', 'completed')}\n"
+            f"子任务执行结果：\n{task_block}\n\n{user_prompt}\n\n"
+            "如果部分任务失败、被拒绝、待审批或没有证据，必须明确说明对应部分未完成，"
+            "不得用其他证据臆测。"
+        )
     chat_result = await llm.chat(
         [
             {"role": "system", "content": RAG_SYSTEM_PROMPT},
-            {"role": "user", "content": build_rag_user_prompt(query, evidence_block)},
+            {"role": "user", "content": user_prompt},
         ]
     )
     answer = (chat_result.content or "").strip() or NO_EVIDENCE_ANSWER
@@ -166,6 +146,6 @@ async def report_node(state: AgentState) -> AgentState:
         "draft_answer": answer,
         "citations": citations,
         "token_usage": chat_result.token_usage,
-        "status": "answered",
+        "status": "answered" if state.get("plan_status") != "partial" else "partial",
         "nodes_executed": ["report"],
     }

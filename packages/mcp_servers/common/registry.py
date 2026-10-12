@@ -24,6 +24,8 @@ from packages.observability.repositories.tool_call_log_repo import write_tool_ca
 
 ToolHandler = Callable[[AsyncSession, UserContext, dict[str, Any]], Awaitable[dict[str, Any]]]
 
+# 工具元数据注册表：用于对外展示工具能力、声明输入字段，并标记高风险操作。
+# 这里只描述“工具是什么”，真正执行工具的函数由下方 TOOL_HANDLERS 绑定。
 TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
     "query_supplier_profile": ToolDefinition(
         name="query_supplier_profile",
@@ -83,6 +85,8 @@ TOOL_DEFINITIONS: dict[str, ToolDefinition] = {
     ),
 }
 
+# 将工具名映射到具体 MCP 服务的处理函数。工具名必须与 TOOL_DEFINITIONS 保持一致，
+# 这样统一执行入口才能在完成权限校验后找到实际业务实现。
 TOOL_HANDLERS: dict[str, ToolHandler] = {
     "query_supplier_profile": supplier_tools.query_supplier_profile,
     "query_supplier_risk_events": supplier_tools.query_supplier_risk_events,
@@ -97,6 +101,8 @@ TOOL_HANDLERS: dict[str, ToolHandler] = {
 
 
 def get_tool_definitions_for_user(user_context: UserContext) -> list[ToolDefinition]:
+    """返回当前用户按角色有权看到的工具定义。"""
+    # 先由权限模块计算白名单，再与实际注册表求交集，避免返回未实现的工具。
     allowed = set(list_allowed_tools(user_context))
     return [TOOL_DEFINITIONS[name] for name in sorted(allowed) if name in TOOL_DEFINITIONS]
 
@@ -110,11 +116,15 @@ async def execute_tool_call(
     trace_id: str | None = None,
     agent_run_id: uuid.UUID | str | None = None,
 ) -> ToolExecutionResult:
+    """统一校验、执行工具并记录完整审计日志。"""
+    # 复制输入，避免后续处理函数修改调用方持有的原始字典。
     tool_input = dict(tool_input or {})
+    # trace_id 串联一次请求内的调用；tool_call_id 唯一标识本次工具执行。
     trace_id = trace_id or str(uuid.uuid4())
     tool_call_id = str(uuid.uuid4())
     started = time.perf_counter()
 
+    # 未注册工具不会进入业务处理函数，但失败尝试仍写入日志，便于审计和排障。
     if tool_name not in TOOL_DEFINITIONS:
         result = ToolExecutionResult(
             tool_name=tool_name,
@@ -142,8 +152,11 @@ async def execute_tool_call(
         )
         raise ToolNotFoundError(tool_name)
 
+    # 在执行前校验角色权限、基础访问约束和高风险审批要求；需要数据库查询的
+    # 供应商范围校验由具体工具处理函数继续完成。
     permission = check_tool_permission(user_context, tool_name, tool_input)
     if not permission.allowed:
+        # 权限拒绝属于预期业务结果：记录原因后直接返回，不调用工具处理函数。
         latency_ms = int((time.perf_counter() - started) * 1000)
         result = ToolExecutionResult(
             tool_name=tool_name,
@@ -173,6 +186,7 @@ async def execute_tool_call(
         return result
 
     if permission.approval_required:
+        # 高风险工具在这里暂停，只返回待审批状态，不调用实际工具处理函数。
         latency_ms = int((time.perf_counter() - started) * 1000)
         result = ToolExecutionResult(
             tool_name=tool_name,
@@ -204,10 +218,12 @@ async def execute_tool_call(
         )
         return result
 
+    # 权限通过后，才从处理函数注册表中取出实现并执行。
     handler = TOOL_HANDLERS[tool_name]
     try:
         output = await handler(session, user_context, tool_input)
         latency_ms = int((time.perf_counter() - started) * 1000)
+        # 处理函数以结构化结果表达业务拒绝；其余正常输出视为成功。
         if output.get("status") == "denied" or output.get("error"):
             status = "denied"
         else:
@@ -239,6 +255,7 @@ async def execute_tool_call(
         )
         return result
     except Exception as exc:
+        # 捕获工具实现的运行时异常，将其转换为统一失败结果并保留审计记录。
         latency_ms = int((time.perf_counter() - started) * 1000)
         output = {"error": str(exc), "status": "failed"}
         result = ToolExecutionResult(
@@ -270,4 +287,5 @@ async def execute_tool_call(
 
 
 def format_tool_evidence_content(tool_name: str, result: dict[str, Any]) -> str:
+    """将工具结果序列化为可供证据聚合与引用的文本。"""
     return json.dumps({"tool": tool_name, "result": result}, ensure_ascii=False, indent=2)

@@ -12,11 +12,13 @@ async def evidence_aggregator_node(state: AgentState) -> AgentState:
     settings = get_settings()
     max_tokens = getattr(settings, "MAX_CONTEXT_TOKENS", 8000)
 
+    planned_evidence = [
+        EvidenceItem.from_dict(item)
+        for result in (state.get("task_results") or [])
+        for item in result.evidence
+    ]
     selected, summary = aggregate_evidence(
-        rag_chunks=state.get("retrieved_chunks") or [],
-        graph_paths=state.get("graph_paths") or [],
-        memory_evidence=state.get("memory_evidence") or [],
-        tool_evidence=state.get("tool_evidence") or [],
+        evidence_items=planned_evidence,
         max_context_tokens=max_tokens,
     )
 
@@ -28,5 +30,8 @@ async def evidence_aggregator_node(state: AgentState) -> AgentState:
             "max_tokens": summary.get("max_tokens", max_tokens),
             "used_tokens": summary.get("used_tokens", 0),
         },
+        "memory_used": [
+            item.to_dict() for item in selected if item.evidence_type == "memory"
+        ],
         "nodes_executed": ["evidence_aggregator"],
     }

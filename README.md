@@ -15,7 +15,7 @@
 | **数据来源** | 企业文档、结构化业务数据、外部开源数据集、用户上传；经 ETL 解析、标准化、分块 | `packages/data_adapters/` |
 | **Secure RAG** | 文档智能检索；在 Qdrant 层做 tenant + 密级 + 角色/供应商 scope 过滤 | Qdrant、Embedding API |
 | **GraphRAG** | 供应链知识图谱多跳推理；预置 Cypher 模板（非 Text2Cypher） | Neo4j |
-| **Agent 编排** | LangGraph 10 节点固定工作流；规则路由 + 证据聚合 + 报告生成 + 审查 | LangGraph、DeepSeek |
+| **Agent 编排** | 所有请求生成可审计执行计划；支持 RAG、Graph、Memory、Tool 多任务依赖与并行执行 | LangGraph、DeepSeek |
 | **Memory** | Redis 短期会话记忆 + PostgreSQL 长期记忆；支持多轮追问 | Redis、PostgreSQL |
 | **MCP Tools** | 供应商/物流/报告导出等结构化工具；角色白名单 + 高风险审批 | `packages/mcp_servers/` |
 | **可视化输出** | Next.js 控制台：Dashboard、RAG/GraphRAG 工作台、Agent Trace、Benchmark | Next.js 15、ECharts、React Flow |
@@ -24,7 +24,7 @@
 ### 与普通 RAG Demo 的区别
 
 - **权限在检索层**：Filter 在 Qdrant / Neo4j / Tool 入口执行，而非 Prompt 自律
-- **Harness 而非 Autonomous Agent**：固定工作流 + 权限护栏，规则路由替代 LLM 自主规划
+- **受约束规划**：规则快速生成简单计划，LLM 拆解复杂任务，随后逐任务做结构、实体与权限校验
 - **多源证据**：文档向量 + 图谱路径 + 记忆 + 结构化 Tool，统一聚合后生成报告
 - **可观测与评测**：每次请求绑定 `trace_id`；111 条 Benchmark 覆盖 RAG / Graph / Memory / 权限边界
 
@@ -37,21 +37,24 @@
 LangGraph Agent 工作流的完整链路：
 
 ```
-Permission → Router → [Tool | GraphRAG | RAG | Memory]*
+Permission → Context Loader → Planner → Plan Validator
+  → Plan Executor[RAG | Graph | Tool | Memory]*
   → Aggregator → Report → Review → Memory Writer
 ```
 
 | 节点 | 作用 |
 |------|------|
 | `permission` | 查询级权限检查；拒绝则跳转 review |
-| `router` | **规则路由**（关键词 + 实体码），非 LLM 规划 |
-| `tool` / `graphrag` / `rag` / `memory` | 按场景调用 MCP 工具、图谱检索、文档 RAG、记忆检索 |
+| `context_loader` | 加载租户/用户/会话隔离的短期上下文并补全指代 |
+| `planner` | 所有请求生成统一计划；复杂请求拆成多个可审计任务 |
+| `plan_validator` | 校验任务 DAG、实体、租户范围及每个任务的权限 |
+| `plan_executor` | 按依赖分批执行 RAG、Graph、Tool、Memory；同批任务并行 |
 | `aggregator` | 多源证据合并、去重、上下文预算裁剪 |
 | `report` | LLM 生成结构化报告 + citations |
 | `review` | 规则审查（引用存在性、blocked 处理） |
 | `memory_writer` | 写入会话/长期记忆 |
 
-**路由模式：** `rag` · `graphrag` · `hybrid` · `memory_rag` · `tool` · `memory`
+简单问题形成单任务计划；复杂问题形成多任务计划，不再使用 `hybrid` 等组合路由枚举。
 
 ### 2. Secure RAG 路径（`POST /api/v1/rag/query`）
 
@@ -108,13 +111,14 @@ JWT → 角色 query_type 权限检查 → 选择 Cypher 模板
 ## 快速开始
 
 ```bash
-git clone https://github.com/betterzyq/SupplyGuard.git
-cd SupplyGuard
+git clone https://github.com/1Bzlin/ChainSentinel.git
+cd ChainSentinel
 
 uv sync
 cp .env.example .env          # 填入 API Key
 
-make up                       # 启动 Docker 基础设施
+make up                       # 缺少镜像时用 crane 拉取，然后启动基础设施
+make pull-crane               # 用 crane 强制刷新全部 Compose 镜像
 make migrate
 make seed
 make ingest-seed-docs
@@ -227,7 +231,8 @@ SupplyGuard/
 
 | 命令 | 说明 |
 |------|------|
-| `make up` | Docker Compose 启动基础设施 |
+| `make up` | 已有镜像直接复用，缺少镜像时通过 crane 拉取，然后启动 Compose |
+| `make pull-crane` | 用 crane 强制刷新全部 Compose 镜像并加载到 Docker |
 | `make migrate` / `make seed` | 数据库迁移与种子数据 |
 | `make api` / `make web` | 启动后端 / 前端 |
 | `make build-graph` | 构建 Neo4j 演示图谱 |
@@ -263,4 +268,4 @@ SupplyGuard/
 
 ## License
 
-MIT（或按项目实际需要调整）
+[MIT](LICENSE)

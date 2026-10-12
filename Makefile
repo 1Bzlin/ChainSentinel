@@ -1,4 +1,4 @@
-.PHONY: up down logs api dev-check format lint migrate migration seed check-authz ingest-seed-docs smoke-mvp3 build-graph smoke-graphrag smoke-memory inspect-graph inspect-memory generate-eval bench smoke-benchmark smoke-observability smoke-tools smoke-llm-provider load-test-chat load-test-rag load-test-graph web web-install profile-data normalize-data load-real-data build-real-graph generate-real-docs ingest-real-docs
+.PHONY: up pull-crane down logs api dev-check format lint migrate migration seed check-authz ingest-seed-docs smoke-mvp3 build-graph smoke-graphrag smoke-memory inspect-graph inspect-memory generate-eval bench smoke-benchmark smoke-observability smoke-tools smoke-llm-provider load-test-chat load-test-rag load-test-graph web web-install profile-data normalize-data load-real-data build-real-graph generate-real-docs ingest-real-docs
 
 COMPOSE = docker compose -f infra/docker-compose.yml
 
@@ -11,8 +11,12 @@ ifneq (,$(filter $(REAL_DATA_TARGETS),$(MAKECMDGOALS)))
   $(eval $(REAL_DATA_ARGS):;@:)
 endif
 
+pull-crane:
+	./scripts/pull_compose_images_with_crane.sh infra/docker-compose.yml
+
 up:
-	$(COMPOSE) up -d
+	CRANE_SKIP_EXISTING=1 ./scripts/pull_compose_images_with_crane.sh infra/docker-compose.yml
+	$(COMPOSE) up -d --pull never
 
 down:
 	$(COMPOSE) down

@@ -8,9 +8,17 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.common.config import get_settings
-from packages.common.llm.factory import get_llm_client
-from packages.common.llm.usage import enrich_token_usage
 from packages.common.db.models.agent_run import AgentRun
+from packages.common.llm.usage import enrich_token_usage
+
+
+def _configured_model_name(provider: str, settings) -> str:
+    models = {
+        "deepseek": settings.DEEPSEEK_MODEL,
+        "litellm": settings.LITELLM_MODEL,
+        "vllm": settings.VLLM_MODEL,
+    }
+    return models.get(provider, settings.DEEPSEEK_MODEL)
 
 
 async def create_agent_run(
@@ -54,9 +62,10 @@ async def finalize_agent_run(
     node_spans: list[dict[str, Any]] | None = None,
 ) -> AgentRun:
     settings = get_settings()
-    provider = get_llm_client(settings)
-    model_info = provider.get_model_info()
-    enriched_usage = enrich_token_usage(token_usage, model=model_info.model)
+    model_name = str(token_usage.get("model") or "") or _configured_model_name(
+        settings.LLM_PROVIDER, settings
+    )
+    enriched_usage = enrich_token_usage(token_usage, model=model_name)
     agent_run.status = status
     agent_run.final_answer = final_answer
     agent_run.citations = citations
@@ -64,7 +73,7 @@ async def finalize_agent_run(
     agent_run.latency_ms = latency_ms
     agent_run.nodes_executed = nodes_executed
     agent_run.error_message = error_message
-    agent_run.llm_model = model_info.model
+    agent_run.llm_model = model_name
     agent_run.estimated_cost = float(enriched_usage.get("estimated_cost") or 0)
     await session.flush()
     return agent_run

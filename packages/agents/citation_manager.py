@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from packages.agents.evidence_types import EvidenceItem
 

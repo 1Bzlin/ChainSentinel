@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -18,8 +18,8 @@ import { TraceIdBadge } from "@/components/badges/TraceIdBadge";
 import { chatQuery, getTrace } from "@/lib/api";
 
 const WORKFLOW_NODES = [
-  "permission", "router", "graphrag", "rag", "memory", "tool",
-  "evidence_aggregator", "report", "review", "memory_writer",
+  "permission", "context_loader", "planner", "plan_validator", "clarify",
+  "plan_executor", "evidence_aggregator", "report", "review", "memory_writer",
 ];
 
 const initialNodes: Node[] = WORKFLOW_NODES.map((name, i) => ({
@@ -48,9 +48,24 @@ export default function AgentPage() {
   const [query, setQuery] = useState("Public Supply Policy 的主要内容是什么？");
   const [traceId, setTraceId] = useState("");
   const [nodeDetails, setNodeDetails] = useState<Record<string, unknown> | null>(null);
+  const [sessionId, setSessionId] = useState("");
+
+  useEffect(() => {
+    const existing = window.sessionStorage.getItem("supplyguard-agent-session");
+    const next = existing || crypto.randomUUID();
+    window.sessionStorage.setItem("supplyguard-agent-session", next);
+    setSessionId(next);
+  }, []);
+
+  const startNewSession = () => {
+    const next = crypto.randomUUID();
+    window.sessionStorage.setItem("supplyguard-agent-session", next);
+    setSessionId(next);
+    setTraceId("");
+  };
 
   const chat = useMutation({
-    mutationFn: () => chatQuery({ query, use_memory: true }),
+    mutationFn: () => chatQuery({ query, session_id: sessionId, use_memory: true }),
     onSuccess: (data) => setTraceId(data.trace_id),
   });
 
@@ -70,16 +85,31 @@ export default function AgentPage() {
 
   return (
     <div>
-      <PageHeader title="Agent Workflow" description="LangGraph harness — Permission → Router → RAG/Graph/Memory/Tool → Report → Review" />
+      <PageHeader title="Agent Workflow" description="LangGraph harness — Permission → Planner → Multi-task execution → Report → Review" />
       <div className="grid gap-6 lg:grid-cols-3">
         <SectionCard title="Run Agent">
           <textarea value={query} onChange={(e) => setQuery(e.target.value)} rows={3} className="w-full rounded-lg border p-2 text-sm" />
-          <button type="button" onClick={() => chat.mutate()} disabled={chat.isPending} className="mt-3 w-full rounded-lg bg-brand-600 py-2 text-sm text-white disabled:opacity-50">
+          <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+            <span className="truncate font-mono" title={sessionId}>session: {sessionId || "initializing"}</span>
+            <button type="button" onClick={startNewSession} className="shrink-0 rounded border px-2 py-1">New session</button>
+          </div>
+          <button type="button" onClick={() => chat.mutate()} disabled={chat.isPending || !sessionId} className="mt-3 w-full rounded-lg bg-brand-600 py-2 text-sm text-white disabled:opacity-50">
             {chat.isPending ? "Running…" : "Run Chat Workflow"}
           </button>
           {chat.data && (
             <div className="mt-4 space-y-2 text-sm">
-              <p>Route: <strong>{chat.data.route_mode}</strong></p>
+              <p>Plan: <strong>{chat.data.plan_status}</strong></p>
+              <p>Planning: <strong>{chat.data.planning_source}</strong> · confidence {chat.data.planning_confidence?.toFixed(2) ?? "-"}</p>
+              {chat.data.resolved_query && chat.data.resolved_query !== query && <p className="text-xs text-slate-500">Resolved: {chat.data.resolved_query}</p>}
+              {chat.data.plan_summary.length > 0 && (
+                <div className="mt-2 space-y-1 text-xs text-slate-600">
+                  {chat.data.plan_summary.map((task) => (
+                    <p key={task.task_id}>
+                      {task.task_id} · {task.task_type} · {task.status}
+                    </p>
+                  ))}
+                </div>
+              )}
               <Link href={`/traces?trace=${chat.data.trace_id}`}><TraceIdBadge traceId={chat.data.trace_id} /></Link>
               <pre className="text-xs bg-slate-50 p-2 rounded max-h-40 overflow-auto whitespace-pre-wrap">{chat.data.answer}</pre>
             </div>

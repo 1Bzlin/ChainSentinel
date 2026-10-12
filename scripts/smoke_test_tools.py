@@ -173,11 +173,15 @@ async def main() -> int:
         chat_body = chat_resp.json()
         chat_trace = chat_body.get("trace_id", "")
         nodes = chat_body.get("nodes_executed") or []
-        chat_tool_ok = chat_ok and "tool" in nodes and chat_body.get("route_mode") == "tool"
+        plan_summary = chat_body.get("plan_summary") or []
+        chat_tool_ok = chat_ok and any(
+            item.get("task_type") == "tool" and item.get("status") == "success"
+            for item in plan_summary
+        )
         if record(
             "/api/v1/chat triggers Tool Node",
             chat_tool_ok,
-            f"nodes={nodes}, route={chat_body.get('route_mode')}",
+            f"nodes={nodes}, plan_status={chat_body.get('plan_status')}",
         ):
             passed += 1
 

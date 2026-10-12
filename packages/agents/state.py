@@ -6,14 +6,15 @@ import operator
 from typing import Annotated, Any, TypedDict
 
 from packages.agents.evidence_types import EvidenceItem
+from packages.agents.planning.schemas import ExecutionPlan, TaskResult
 from packages.authz.rbac import PermissionDecision, UserContext
-from packages.graphrag.graph_context import GraphPath, GraphRetrievalResult
 from packages.rag.citations import Citation
-from packages.rag.retriever import RetrievedChunk
 
 
 class AgentState(TypedDict, total=False):
     query: str
+    original_query: str
+    resolved_query: str
     user_context: UserContext
     trace_id: str
     session_id: str
@@ -24,18 +25,20 @@ class AgentState(TypedDict, total=False):
     supplier_id: str | None
     ip_address: str | None
     use_memory: bool
+    session_context: dict[str, Any]
+    context_references: list[str]
+    context_unresolved: bool
+    resolved_entities: dict[str, str]
     db_session: Any
     permission_decision: PermissionDecision
-    route_mode: str
-    tool_name: str | None
-    tool_input: dict[str, Any]
-    tool_evidence: list[dict[str, Any]]
-    graph_query_type: str
-    graph_entity_code: str | None
-    graph_result: GraphRetrievalResult
-    graph_paths: list[GraphPath]
-    graph_evidence: list[dict[str, Any]]
-    memory_evidence: list[dict[str, Any]]
+    execution_plan: ExecutionPlan
+    plan_status: str
+    planning_source: str
+    planning_confidence: float
+    planning_token_usage: dict[str, Any]
+    task_results: list[TaskResult]
+    plan_summary: list[dict[str, Any]]
+    clarification_question: str | None
     recent_entities: dict[str, str]
     unified_evidence: list[EvidenceItem]
     aggregated_evidence: list[dict[str, Any]]
@@ -43,8 +46,6 @@ class AgentState(TypedDict, total=False):
     context_budget: dict[str, Any]
     memory_used: list[dict[str, Any]]
     memory_written: list[dict[str, Any]]
-    retrieved_chunks: list[RetrievedChunk]
-    evidence: list[dict[str, Any]]
     draft_answer: str
     final_answer: str
     citations: list[Citation]

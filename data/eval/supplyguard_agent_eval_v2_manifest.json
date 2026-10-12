@@ -1,0 +1,51 @@
+{
+  "name": "SupplyGuard Agent Plan Benchmark V2",
+  "version": 2,
+  "dataset": "supplyguard_agent_eval_v2.jsonl",
+  "total": 150,
+  "dimensions": [
+    {
+      "name": "planner",
+      "count": 30,
+      "id_ranges": ["plan_001-plan_024", "graph_001-graph_006"],
+      "description": "意图、能力选择、实体抽取、参数补全、Graph 查询类型与澄清"
+    },
+    {
+      "name": "orchestration",
+      "count": 30,
+      "id_ranges": ["mix_001-mix_030"],
+      "description": "多能力拆解、并行、依赖、比较、部分结果和动作审批"
+    },
+    {
+      "name": "permission",
+      "count": 35,
+      "id_ranges": ["sec_001-sec_035"],
+      "description": "PostgreSQL、Qdrant、Neo4j、工具、租户、供应商范围和审批"
+    },
+    {
+      "name": "context_memory",
+      "count": 25,
+      "id_ranges": ["mem_001-mem_025"],
+      "description": "多轮指代、歧义、覆盖、时效、会话、用户与租户隔离"
+    },
+    {
+      "name": "answer_faithfulness",
+      "count": 15,
+      "id_ranges": ["ans_001-ans_015"],
+      "description": "证据充分性、冲突、引用、推断标注、过度概括和无答案"
+    },
+    {
+      "name": "reliability_audit",
+      "count": 15,
+      "id_ranges": ["val_001-val_015"],
+      "description": "计划校验、异常恢复、超时、审批和全链路 Trace"
+    }
+  ],
+  "legacy_dataset_count": 111,
+  "combined_expected_count": 261,
+  "notes": [
+    "本文件描述新增 V2 数据集的精确维度分布。",
+    "旧版 111 条数据仍由旧数据集维护，不复制进 V2 文件。",
+    "计划评分应比较规范化任务签名，不比较 task_id 或 rewritten_query 的字符串全等。"
+  ]
+}
