@@ -1,6 +1,8 @@
 # SupplyGuard
 
-面向供应链风险管理与采购决策的工程化 **Agent Harness 平台**——在 RBAC 权限约束下，融合 Secure RAG、GraphRAG、Memory 与 LangGraph 多 Agent 工作流，为采购、物流、质量、财务与高管提供 **可审计、可引用、可评估** 的风险洞察与决策支持。
+面向供应链风险管理与采购决策的工程化 **Agent Harness 平台**。SupplyGuard 在 RBAC 权限约束下融合 Secure RAG、GraphRAG、Memory 与 MCP Tools，并通过 LangGraph 将请求拆解为可验证、可追踪的执行计划，为采购、物流、质量、财务与管理层提供 **可审计、可引用、可评估** 的风险洞察与决策支持。
+
+当前版本的重点是 **Planner V1**：简单请求走确定性规则计划，复杂请求由 LLM 生成最多 8 个任务的 DAG；计划在执行前必须通过结构、实体、租户范围、角色权限和高风险审批校验。
 
 ## 系统架构
 
@@ -26,7 +28,7 @@
 - **权限在检索层**：Filter 在 Qdrant / Neo4j / Tool 入口执行，而非 Prompt 自律
 - **受约束规划**：规则快速生成简单计划，LLM 拆解复杂任务，随后逐任务做结构、实体与权限校验
 - **多源证据**：文档向量 + 图谱路径 + 记忆 + 结构化 Tool，统一聚合后生成报告
-- **可观测与评测**：每次请求绑定 `trace_id`；111 条 Benchmark 覆盖 RAG / Graph / Memory / 权限边界
+- **可观测与评测**：每次请求绑定 `trace_id`；111 条基础评测 + 150 条 Agent Plan V2 评测覆盖规划、编排、权限、Memory、回答忠实性与审计
 
 ---
 
@@ -38,7 +40,9 @@ LangGraph Agent 工作流的完整链路：
 
 ```
 Permission → Context Loader → Planner → Plan Validator
-  → Plan Executor[RAG | Graph | Tool | Memory]*
+  ├─ blocked ───────────────────────────────→ Review
+  ├─ clarification_required → Clarify ─────→ Review
+  └─ ready → Plan Executor[RAG | Graph | Tool | Memory]*
   → Aggregator → Report → Review → Memory Writer
 ```
 
@@ -47,14 +51,15 @@ Permission → Context Loader → Planner → Plan Validator
 | `permission` | 查询级权限检查；拒绝则跳转 review |
 | `context_loader` | 加载租户/用户/会话隔离的短期上下文并补全指代 |
 | `planner` | 所有请求生成统一计划；复杂请求拆成多个可审计任务 |
-| `plan_validator` | 校验任务 DAG、实体、租户范围及每个任务的权限 |
+| `plan_validator` | 校验任务 DAG、实体、租户范围、每个任务的权限及高风险审批要求 |
 | `plan_executor` | 按依赖分批执行 RAG、Graph、Tool、Memory；同批任务并行 |
+| `clarify` | 实体或意图无法唯一确定时返回澄清问题，不执行不安全或不完整的计划 |
 | `aggregator` | 多源证据合并、去重、上下文预算裁剪 |
 | `report` | LLM 生成结构化报告 + citations |
 | `review` | 规则审查（引用存在性、blocked 处理） |
 | `memory_writer` | 写入会话/长期记忆 |
 
-简单问题形成单任务计划；复杂问题形成多任务计划，不再使用 `hybrid` 等组合路由枚举。
+简单问题形成单任务规则计划；复杂问题形成多任务计划，不再使用 `hybrid` 等组合路由枚举。每次运行都会持久化 `AgentExecutionPlan` 与 `AgentTaskRun`，并在 Trace 页面展示计划、任务状态、检索记录、工具调用和节点耗时。
 
 ### 2. Secure RAG 路径（`POST /api/v1/rag/query`）
 
@@ -103,7 +108,7 @@ JWT → 角色 query_type 权限检查 → 选择 Cypher 模板
 
 - Python >= 3.11，[uv](https://github.com/astral-sh/uv)
 - Node.js 18+（前端）
-- Docker Compose（Postgres / Redis / Qdrant / Neo4j / MinIO）
+- Docker、Docker Compose 与 [crane](https://github.com/google/go-containerregistry/tree/main/cmd/crane)（Postgres / Redis / Qdrant / Neo4j / MinIO）
 - 复制 `.env.example` 为 `.env`，填入 `DEEPSEEK_API_KEY`、`EMBEDDING_*`、`JWT_SECRET_KEY`、`EMBEDDING_DIM`
 
 ---
@@ -111,14 +116,13 @@ JWT → 角色 query_type 权限检查 → 选择 Cypher 模板
 ## 快速开始
 
 ```bash
-git clone https://github.com/1Bzlin/ChainSentinel.git
-cd ChainSentinel
+git clone https://github.com/1Bzlin/SupplyGuard.git
+cd SupplyGuard
 
 uv sync
 cp .env.example .env          # 填入 API Key
 
-make up                       # 缺少镜像时用 crane 拉取，然后启动基础设施
-make pull-crane               # 用 crane 强制刷新全部 Compose 镜像
+make up                       # 复用本地镜像；缺失镜像通过 crane 拉取
 make migrate
 make seed
 make ingest-seed-docs
@@ -134,6 +138,7 @@ make web-install && make web  # 终端 2：Next.js :3000
 make smoke-mvp3               # Secure RAG
 make smoke-graphrag           # GraphRAG
 make smoke-benchmark          # Benchmark
+uv run pytest tests/test_planning.py
 ```
 
 **Demo 账号：** `admin@example.com` / `password123`（仅开发环境）
@@ -182,7 +187,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
   -d '{"query":"请总结 Alpha Components 合同中的付款条款。"}'
 ```
 
-返回包含 `answer`、`citations`、`trace_id`、`nodes_executed`、`graph_paths`。
+返回除 `answer`、`citations`、`trace_id`、`nodes_executed` 外，还包含 `plan_id`、`plan_status`、`planning_source`、`planning_confidence`、`plan_summary` 与 `resolved_query`，可直接审计规划和任务执行结果。
 
 ---
 
@@ -194,7 +199,7 @@ SupplyGuard/
 │   ├── api/              # FastAPI 入口、路由、中间件
 │   └── web/              # Next.js 前端控制台
 ├── packages/
-│   ├── agents/           # LangGraph 工作流（10 节点）
+│   ├── agents/           # LangGraph、Planner、Validator、并行任务执行与证据聚合
 │   ├── rag/              # 文档摄取、Secure RAG
 │   ├── graphrag/         # Neo4j 模板 Cypher、建图
 │   ├── memory/           # Redis 短期 + PG 长期记忆
@@ -239,6 +244,8 @@ SupplyGuard/
 | `make ingest-seed-docs` | Seed 文档入库 PG + Qdrant |
 | `make bench` | 运行 Benchmark（limit 100） |
 | `make smoke-mvp3` | Secure RAG 端到端冒烟 |
+| `uv run pytest tests/test_planning.py` | Planner / Validator / DAG 执行单元测试 |
+| `uv run python scripts/run_agent_eval_v2.py` | 运行 150 条 Agent Plan V2 端到端评测 |
 
 ---
 
@@ -247,9 +254,12 @@ SupplyGuard/
 **已实现：**
 
 - Secure RAG + GraphRAG + Memory + MCP Tools + LangGraph Chat
+- Planner V1：规则/LLM 双路径规划、最多 8 个 RAG/Graph/Tool/Memory 任务、DAG 依赖与同层并行
+- 计划级校验：Schema、循环依赖、实体真实性、租户边界、角色权限及高风险审批
+- 计划与任务运行持久化；Chat API 和 Trace 页面展示规划来源、置信度与逐任务状态
 - JWT + RBAC + 三层权限（Qdrant / Graph / Tool）
 - Next.js 全功能控制台 + Benchmark + Trace 回放
-- 111 条确定性 Benchmark；全链路 `trace_id` 可观测
+- 111 条基础 Benchmark + 150 条 Agent Plan V2 Benchmark；全链路 `trace_id` 可观测
 
 **尚未实现：**
 
