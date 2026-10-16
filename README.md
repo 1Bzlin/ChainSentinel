@@ -1,14 +1,14 @@
-# SupplyGuard
+# ChainSentinel
 
-面向供应链风险管理与采购决策的工程化 **Agent Harness 平台**。SupplyGuard 在 RBAC 权限约束下融合 Secure RAG、GraphRAG、Memory 与 MCP Tools，并通过 LangGraph 将请求拆解为可验证、可追踪的执行计划，为采购、物流、质量、财务与管理层提供 **可审计、可引用、可评估** 的风险洞察与决策支持。
+面向供应链风险管理与采购决策的工程化 **Agent Harness 平台**。ChainSentinel 在 RBAC 权限约束下融合 Secure RAG、GraphRAG、Memory 与 MCP Tools，并通过 LangGraph 将请求拆解为可验证、可追踪的执行计划，为采购、物流、质量、财务与管理层提供 **可审计、可引用、可评估** 的风险洞察与决策支持。
 
 当前版本的重点是 **Planner V1**：简单请求走确定性规则计划，复杂请求由 LLM 生成最多 8 个任务的 DAG；计划在执行前必须通过结构、实体、租户范围、角色权限和高风险审批校验。
 
 ## 系统架构
 
-![SupplyGuard 系统架构](assets/SupplyGuard_Structure.png)
+![ChainSentinel 系统架构](assets/SupplyGuard_Structure.png)
 
-上图展示了 SupplyGuard 的七层能力模块与底层基础设施。整体采用 **Monorepo** 结构（`apps/` + `packages/`），前后端分离，数据层多存储协同。
+上图展示了 ChainSentinel 的七层能力模块与底层基础设施。整体采用 **Monorepo** 结构（`apps/` + `packages/`），前后端分离，数据层多存储协同。
 
 ### 架构分层说明
 
@@ -116,8 +116,8 @@ JWT → 角色 query_type 权限检查 → 选择 Cypher 模板
 ## 快速开始
 
 ```bash
-git clone https://github.com/1Bzlin/SupplyGuard.git
-cd SupplyGuard
+git clone https://github.com/1Bzlin/ChainSentinel.git
+cd ChainSentinel
 
 uv sync
 cp .env.example .env          # 填入 API Key
@@ -194,7 +194,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 ## 项目结构
 
 ```
-SupplyGuard/
+ChainSentinel/
 ├── apps/
 │   ├── api/              # FastAPI 入口、路由、中间件
 │   └── web/              # Next.js 前端控制台
