@@ -6,9 +6,6 @@
 
 ## 系统架构
 
-![ChainSentinel 系统架构](assets/SupplyGuard_Structure.png)
-
-上图展示了 ChainSentinel 的七层能力模块与底层基础设施。整体采用 **Monorepo** 结构（`apps/` + `packages/`），前后端分离，数据层多存储协同。
 
 ### 架构分层说明
 
@@ -195,7 +192,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 
 ```
 ChainSentinel/
-├── apps/
+├── apps/ 
 │   ├── api/              # FastAPI 入口、路由、中间件
 │   └── web/              # Next.js 前端控制台
 ├── packages/
@@ -267,12 +264,6 @@ ChainSentinel/
 - RAGAS / LLM-as-Judge
 - MinIO 主存储（仅健康检查预留）
 - 真实 ERP 实时对接
-
----
-
-## Maintainer
-
-- GitHub: [@betterzyq](https://github.com/betterzyq)
 
 ---
 
